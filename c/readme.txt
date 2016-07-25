@@ -1,1 +1,1 @@
-lib is a linux c library
+lib is linux c library
