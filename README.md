@@ -47,3 +47,9 @@ The csharp dir are some common function modules which used in password.
 ```
 -base64
 ```
+contact:
+```
+author: Abel Lee 
+QQ: 827992983 
+Email: 827992983@qq.com
+```
