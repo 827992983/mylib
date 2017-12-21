@@ -32,19 +32,17 @@ bool AsUser::begin()
 
     if (_session_id == (DWORD)-1) {
 		DWORD pid = GetCurrentProcessId();
-		LOG_ERROR("--------------pid:%d", pid);
         ret = ProcessIdToSessionId(pid, &_session_id);
         if (!ret) {
             LOG_ERROR("ProcessIdToSessionId failed %lu", GetLastError());
             return false;
         }
     }
-	LOG_ERROR("--------------session_id:%d", _session_id);
     if (_token == INVALID_HANDLE_VALUE) {
         ret = WTSQueryUserToken(_session_id, &_token);
         if (!ret) {
             LOG_ERROR("WTSQueryUserToken failed -- %lu", GetLastError());
-        return false;
+			return false;
         }
     }
 

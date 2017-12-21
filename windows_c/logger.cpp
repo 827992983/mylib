@@ -22,7 +22,7 @@ unsigned long get_file_size(const char *path)
 	fseek(fp, 0L, SEEK_END);  
 	filesize = ftell(fp);  
 	fclose(fp);  
-	return filesize;  
+	return filesize;
 }  
 
 void log_init(const char *log_file_name)
