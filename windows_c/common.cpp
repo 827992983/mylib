@@ -131,6 +131,7 @@ char *ReplaceChar(char *str, char _old, char _new)
 
 char *ReplaceStr(char *src, const char *sub, const char *dst)
 {
+	int flag = 0;
 	int length = 0;
 	int srcLen, subLen, dstLen;
 
@@ -148,33 +149,28 @@ char *ReplaceStr(char *src, const char *sub, const char *dst)
 		return NULL;
 	}
 
-	char *src_bak = (char *)malloc(strlen(src) + 1);
-	strcpy(src_bak, src);
-	char *pos = src_bak;
-	while(pos != NULL){
-		pos = strstr(pos, sub);
+	char *result = NULL;
+	char *psrc = src;
+	while(psrc != NULL){
+		char *pos = strstr(psrc, sub);
 		if(pos != NULL){
-			if(subLen < dstLen){
-				src_bak = (char *)realloc((void *)src_bak, srcLen+dstLen-subLen); //扩大内存
-				src_bak[ srcLen+dstLen-subLen-1] = '\0';
-				memmove(src_bak+(pos-src_bak)+dstLen, src_bak+(pos-src_bak)+subLen, srcLen-(pos-src_bak));
-				memcpy(src_bak+(pos-src_bak), dst, dstLen);
-			}else if (subLen == dstLen){
-				memcpy(src_bak+(pos-src_bak), dst, dstLen);
-			}else{
-				memmove(src_bak+(pos-src_bak)+dstLen, src_bak+(pos-src_bak)+subLen, srcLen-(pos-src_bak)-(subLen-dstLen));
-				memcpy(src_bak+(pos-src_bak), dst, dstLen);
-				src_bak = (char *)realloc((void *)src_bak, srcLen + dstLen - subLen); //缩小内存
-				src_bak[ srcLen+dstLen-subLen] = '\0';
-			}
-			pos = src_bak;
+			result = (char *)realloc(result, length + (pos-psrc) + dstLen);
+			memcpy(result+length, psrc, pos-psrc);
+			length += pos-psrc;
+			memcpy(result + length, dst, dstLen);
+			length += dstLen;
+			result[length] = '\0';
 		}else{
+			result = (char *)realloc(result, length + srcLen-(psrc-src));
+			memcpy(result + length, psrc, srcLen-(psrc-src));
+			length += srcLen-(psrc-src);
+			result[length] = '\0';
 			break;
 		}
-		srcLen = strlen(src_bak);
+		psrc = pos+subLen;
 	}
 
-	return src_bak;
+	return result;
 }
 
 unsigned long CheckFileSize(const char *path)
