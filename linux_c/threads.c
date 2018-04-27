@@ -1,6 +1,8 @@
 #include <sys/time.h>
 #include <errno.h>
 #include "threads.h"
+#include <stdio.h>
+#include <unistd.h>
 
 static task_queue_t *create_task_queue(void)
 {
@@ -9,13 +11,11 @@ static task_queue_t *create_task_queue(void)
 	que = (task_queue_t *)malloc(sizeof(task_queue_t));
 	if(que == NULL)
 	{
-		perror("malloc threads_queue_t error!\n");
 		return NULL;
 	}
 	que->head = (struct list_node *)malloc(sizeof(struct list_node));
 	if(que->head == NULL)
 	{
-		perror("malloc threads_queue_t error!\n");
 		free(que);
 		return NULL;
 	}
@@ -32,7 +32,6 @@ static int add_new_task(task_queue_t *p_task, void *data)
 	task = (threads_task_t *)malloc(sizeof(threads_task_t));
 	if(task == NULL)
 	{
-		perror("malloc threads_task_t error!\n");
 		return -1;
 	}
 	task->data = data;
@@ -46,17 +45,17 @@ static void *get_task_data(task_queue_t *p_task)
 {
 	threads_task_t *task;
 	void *data;
-	struct list_node *temp_head = p_task->head->next;
+	struct list_node *task_node = p_task->head->next;
 
 	if(p_task == NULL || p_task->count <= 0)
 	{
-		perror("parameters error!\n");
 		return NULL;
 	}
-	task = list_entry(p_task->head,threads_task_t,node);
+	task = list_entry(task_node, threads_task_t, node);
 	data = task->data;
 	list_remove(&task->node);
 	free(task);
+	p_task->count--;
 	return data;
 }
 
@@ -68,7 +67,6 @@ void thread_pool_destroy(thread_pool_t *thread_pool)
 	}
 	if (pthread_mutex_lock(&thread_pool->mutex) != 0)
 	{
-		perror("thread mutex lock error\n");
 		exit(-1);
 	}
 	thread_pool->state = THREAD_POOL_EXIT;
@@ -90,7 +88,6 @@ void thread_pool_destroy(thread_pool_t *thread_pool)
 	}
 	if (pthread_mutex_unlock(&thread_pool->mutex) != 0)
 	{
-		perror("thread mutex unlock error\n");
 		exit(-1);
 	}
 	pthread_mutex_destroy(&(thread_pool->mutex));
@@ -105,18 +102,16 @@ thread_pool_t *thread_pool_new(int max_threads_num, int timeout, void (*handler)
 	thread_pool_t *thread_pool = NULL;
 	if (max_threads_num <= 0)
 	{
-		perror("The threads number is less than 0.\n");
 		return NULL;
 	}
 
 	if(handler == NULL)
 	{
-		perror("handler is NULL.\n");
 		return NULL;
 	}
 
 	thread_pool = (thread_pool_t *) malloc(sizeof(thread_pool_t));
-	if (!thread_pool->queue)
+	if (!thread_pool)
 	{
 		free(thread_pool);
 		return NULL;
@@ -171,7 +166,6 @@ void *thread_working(void *para)
 	{
 		if (pthread_mutex_lock(&(thread_pool->mutex)) != 0)
 		{
-			perror("pthread mutex lock error!\n");
 			exit(-2);
 		}
 		timeout.tv_sec = thread_pool->timeout;
@@ -195,7 +189,6 @@ void *thread_working(void *para)
 		}
 		if (pthread_mutex_unlock(&(thread_pool->mutex)) != 0)
 		{
-			perror("pthread mutex unlock error!\n");
 			exit(-2);
 		}
 		if (task_data)
@@ -209,7 +202,6 @@ void *thread_working(void *para)
 	}
 	if (pthread_mutex_lock(&(thread_pool->mutex)) != 0)
 	{
-		perror("pthread mutex lock error!\n");
 		exit(-2);
 	}
 
@@ -220,7 +212,6 @@ void *thread_working(void *para)
 	}
 	if (pthread_mutex_unlock(&(thread_pool->mutex)) != 0)
 	{
-		perror("pthread mutex unlock error!\n");
 		exit(-2);
 	}
 	return NULL;
@@ -236,14 +227,12 @@ int thread_task_dispatch(thread_pool_t *thread_pool, void *user_data)
 	}
 	if (pthread_mutex_lock(&(thread_pool->mutex)) != 0)
 	{
-		perror("pthread mutex lock error!\n");
 		return -2;
 	}
 	if (thread_pool->state != THREAD_POOL_WORK)
 	{
 		if (pthread_mutex_unlock(&(thread_pool->mutex)) != 0)
 		{
-			perror("pthread mutex unlock error!\n");
 			return -3;
 		}
 		return -4;
@@ -255,7 +244,7 @@ int thread_task_dispatch(thread_pool_t *thread_pool, void *user_data)
 	{
 		if (pthread_create(&pth_id, &(thread_pool->attr), thread_working, thread_pool) != 0)
 		{
-			perror("create thread error!\n");
+			printf("create thread error!\n");
 		}
 		else
 		{
@@ -265,9 +254,30 @@ int thread_task_dispatch(thread_pool_t *thread_pool, void *user_data)
 	pthread_cond_signal(&(thread_pool->cond));
 	if (pthread_mutex_unlock(&(thread_pool->mutex)) != 0)
 	{
-		perror("pthread mutex unlock error!\n");
 		return -5;
 	}
 	return 0;
 }
 
+#if 0
+void callback(void *param)
+{
+	printf("thread_id=%x, param=%d\n", (int)pthread_self(), *((int *)param));
+	sleep(1);
+	return;
+}
+
+int main(void)
+{
+	int i = 0;
+	thread_pool_t *thread_pool = thread_pool_new(10, 1, callback);
+	printf("create thread pool\n");
+	sleep(1);
+	for(i = 0; i < 100; i++)
+	{
+		printf("add task:%d, return:%d\n", i, thread_task_dispatch(thread_pool, &i));
+	}
+	sleep(100);
+	thread_pool_destroy(thread_pool);
+}
+#endif
