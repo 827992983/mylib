@@ -51,11 +51,13 @@ class DataMsg:
 
 class EsocketServer:
     def __init__(self,
+                 ctx,
                  host="0.0.0.0",
                  port=9500,
                  listen_size=100,
                  timeout=1,
                  handler = None):
+        self.ctx = ctx
         self.port = port
         self.host = host
         self.listen_size = listen_size
@@ -88,43 +90,41 @@ class EsocketServer:
         head = sock.recv(SOCKET_HEADER_SIZE)
         if head is None or len(head) == 0:
             logger.info("client [%s] is closed." % str(self.clients_ext[sock.fileno()]))
-            self.selector.unregister(sock.fileno())
-            self.clients_ext.pop(sock.fileno())
-            self.clients.pop(sock.fileno())
-            sock.close()
+            self.close_socket(sock)
             return None
         header_data = struct.unpack("=%dsi" % len(SOCKET_HEADER_NAME), head[:SOCKET_HEADER_SIZE])
         logger.info("read-HEAD: %s" % str(header_data))
         header = HeaderMsg(header_data[0], header_data[1])
-        data_size = header.size - SOCKET_HEADER_SIZE
+        total_size = data_size = header.size - SOCKET_HEADER_SIZE
         data = ""
+        count = 0
         while end_time > time.time():
             try:
-                buf = sock.recv(SOCKET_RECV_BUF_SIZE)
+                buf = sock.recv(data_size)
                 if buf is None or len(buf) == 0:
                     logger.info("client [%s] is closed." % str(self.clients_ext[sock.fileno()]))
-                    self.selector.unregister(sock.fileno())
-                    self.clients_ext.pop(sock.fileno())
-                    self.clients.pop(sock.fileno())
-                    sock.close()
+                    self.close_socket(sock)
                     return None
                 data = data + buf
-                if len(data) < data_size:
+                if len(buf) < data_size:
+                    data_size = data_size - len(buf)
+                    time.sleep(0.1)
                     continue
-                recv_data = struct.unpack("=%ds" % data_size, data)[0]
-                #logger.info("read-DATA len(%d): %s" % (len(recv_data), recv_data))
-                logger.info("read-DATA len [%d]" % len(recv_data))
-                return recv_data
+                if total_size == len(data):
+                    logger.info("read-DATA len(%d)" % (len(data)))
+                    return data
+                if count > 20:
+                    logger.error("read socket timeout.")
+                    return None
             except socket.error as err:
                 logger.error("socket exception: %s" % str(err))
                 if err.errno == errno.ECONNRESET or err.errno == errno.EBADF:
                     logger.info("client [%s] is closed." % str(self.clients_ext[sock.fileno()]))
-                    self.selector.unregister(sock.fileno())
-                    self.clients_ext.pop(sock.fileno())
-                    self.clients.pop(sock.fileno())
-                    sock.close()
+                    self.close_socket(sock)
                     return None
                 if err.errno == errno.EAGAIN:
+                    logger.info("data is coming")
+                    count += 1
                     time.sleep(0.2)
                     continue
 
@@ -142,10 +142,7 @@ class EsocketServer:
             logger.error("socket exception: %s" % err)
             if err.errno == errno.ECONNRESET or err.errno == errno.EBADF:
                 logger.info("client [%s:%s] is closed." % self.clients_ext[sock.fileno()])
-                self.selector.unregister(sock.fileno())
-                self.clients_ext.pop(sock.fileno())
-                self.clients.pop(sock.fileno())
-                sock.close()
+                self.close_socket(sock)
 
     def start(self):
         self.running = True
@@ -171,21 +168,16 @@ class EsocketServer:
                             self.handler.handle(self, self.clients[fd], recv_data)
                     except Exception, e:
                         logger.error("recv data and handle data with exception: %s" % e)
-                        logger.info("close socket [%s]" % str(self.clients_ext[fd]))
-                        #self.send(sock, "close you!", 10)
-                        self.selector.unregister(fd)
-                        self.clients_ext.pop(fd)
-                        self.clients.pop(fd)
-                        sock.close()
+                        if fd in self.clients_ext.keys():
+                            logger.info("close socket [%s]" % str(self.clients_ext[fd]))
+                            #self.send(sock, "close you!", 10)
+                            self.close_socket(self.clients[fd])
                 elif event & select.EPOLLPRI:
                     logger.info("EPOLLPRI")
                 elif event & select.EPOLLERR or event & select.EPOLLHUP:
                     logger.info("socket [%s] is error, closed it." % str(self.clients_ext[fd]))
-                    self.selector.unregister(fd)
-                    self.clients_ext.pop(fd)
-                    sock = self.clients.pop(fd)
-                    if sock:
-                        sock.close()
+                    if fd in self.clients_ext.keys():
+                        self.close_socket(self.clients[fd])
 
     def stop(self):
         self.running = False
@@ -197,5 +189,15 @@ class EsocketServer:
             client.close()
         self.server_socket.close()
         self.selector.close()
+        
+        
+    def close_socket(self,sock):
+        self.selector.unregister(sock.fileno())
+        if sock.fileno() in self.clients_ext.keys():
+            self.clients_ext.pop(sock.fileno())
+        if sock.fileno() in self.clients.keys():
+            self.clients.pop(sock.fileno())
+        self.ctx.socket_close_callback(sock)
+        sock.close()
 
 
